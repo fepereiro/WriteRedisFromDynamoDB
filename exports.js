@@ -1,32 +1,36 @@
+'use strict';
+
 var redis = require("redis");
-var async = require("async");
-function handler(event, context, globalCallback) {
+
+exports.handler = (event, context, globalCallback) => {
+    context.callbackWaitsForEmptyEventLoop = false;
+    
+    console.log('Creating client.');
     var redisClient = redis.createClient(6379, process.env.URL, {no_ready_check: true});
-    async.each(event.Records, function(record, callback) { 
-        var key = record.dynamodb.Keys.Number.N;
+    console.log('Client created.');
+    
+    event.Records.forEach((record) => {
+        console.log('Event: ' + record.eventName + ' - ' + record.eventID);
         
-        redisClient.get(key, function(err, reply) {
-            // reply is null when the key is missing
-            console.log(reply);
-        });
+        var key = record.dynamodb.Keys.Number.N;
+        console.log('Key identified: ' + key);
         
         if (record.eventName === "INSERT" || record.eventName === "MODIFY") {
             var value = JSON.stringify(record.dynamodb.NewImage);
+            console.log('Inserting value: ' + value);
             redisClient.set(key, value, function(err) {
-                callback(err);
+                globalCallback(err);
             });
+            console.log('Value inserted.');
         } else if (record.eventName === "REMOVE") {
+            console.log('Removing key/value.');
             redisClient.del(key, function(err) {
-               callback(err);
+               globalCallback(err);
             });
-        }
-    }, function(err){
-        redisClient.quit();
-        if(err) {
-            globalCallback(err);
-        } else {
-            globalCallback(null, "DONE");
+            console.log('Value removed.');
         }
     });
+
+    console.log('Successfully processed.');
+    globalCallback(null, `Successfully processed ${event.Records.length} records.`);
 }
-exports.handler = handler;
